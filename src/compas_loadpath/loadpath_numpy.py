@@ -531,7 +531,7 @@ if __name__ == "__main__":
 
     # Load FormDiagram
 
-    file = os.path.join(compas_ags.DATA, 'loadpath/arches_flat.json')
+    file = '/home/al/compas_loadpath/data/_/arches_flat.json'
     form = FormDiagram.from_json(file)
 
     # Single run
@@ -541,7 +541,7 @@ if __name__ == "__main__":
 
     # Multiple runs
 
-    fopts, forms, best = optimise_multi(form, trials=5000, save_figs='/home/al/temp/figs/', qmax=5, population=200, generations=300)
+    fopts, forms, best = optimise_multi(form, trials=100, save_figs='/home/al/Dropbox/figs/', qmax=5, population=200, generations=300)
     form = forms[best]
 
     # Plot
