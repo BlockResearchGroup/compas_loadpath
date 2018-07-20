@@ -11,20 +11,23 @@ from numpy import isnan
 from numpy import max
 from numpy import mean
 from numpy import newaxis
+from numpy import vstack
 from numpy import zeros
 from numpy.linalg import pinv
 from numpy.random import rand
 
 from scipy.linalg import svd
 from scipy.optimize import fmin_slsqp
-from scipy.sparse import diags
 from scipy.sparse import csr_matrix
+from scipy.sparse import diags
 from scipy.sparse.linalg import spsolve
 
 from compas_ags.diagrams import FormDiagram
-from compas_ags.diagrams import ForceDiagram
+# from compas_ags.diagrams import ForceDiagram
 
-from compas.plotters import NetworkPlotter
+from compas.geometry import add_vectors
+from compas.geometry import scale_vector
+from compas.geometry import vector_from_points
 
 from compas.numerical import connectivity_matrix
 from compas.numerical import devo_numpy
@@ -33,15 +36,17 @@ from compas.numerical import ga
 from compas.numerical import normrow
 from compas.numerical import nonpivots
 
+from compas.plotters import NetworkPlotter
+
 from compas.utilities import geometric_key
+
+from compas.viewers import VtkViewer
 
 from multiprocessing import Pool
 
 from random import shuffle
 
-import compas_ags
 import sympy
-import os
 
 
 __author__    = ['Andrew Liew <liew@arch.ethz.ch>']
@@ -51,6 +56,7 @@ __email__     = 'liew@arch.ethz.ch'
 
 
 __all__ = [
+    'ground_form',
     'optimise_single',
     'optimise_multi',
     'plot_form',
@@ -58,8 +64,58 @@ __all__ = [
 ]
 
 
-def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, population=300,
-                    generations=500, printout=10, plot=False, frange=None, indset=None, tension=False):
+def ground_form(points, overlap=10):
+
+    """ Makes a ground structure FormDiagram from a set of points.
+
+    Parameters
+    ----------
+    points : list
+        Co-ordinates of each point to connect.
+    overlap : int
+        Check overlapping for this number of edge divisions.
+
+    Returns
+    -------
+    obj
+        Connected edges in a FormDiagram object.
+
+    """
+
+    form = FormDiagram()
+
+    gkey_key = {}
+    for x, y, z in points:
+        key = form.add_vertex(x=x, y=y, z=z)
+        gkey_key[geometric_key([x, y, z])] = key
+
+    for i in form.vertices():
+        for j in form.vertices():
+
+            if (i != j) and (not form.has_edge(u=i, v=j, directed=False)):
+                sp = form.vertex_coordinates(i)
+                ep = form.vertex_coordinates(j)
+                vec = vector_from_points(sp, ep)
+                unique = True
+
+                for c in range(2, overlap):
+                    for d in range(1, c):
+                        sc = d / c
+                        div = add_vectors(sp, scale_vector(vec, sc))
+                        if gkey_key.get(geometric_key(div), None):
+                            unique = False
+                            break
+                    if not unique:
+                        break
+
+                if unique:
+                    form.add_edge(u=i, v=j)
+
+    return form
+
+
+def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, population=300, generations=500,
+                    printout=10, plot=False, frange=None, indset=None, tension=False, planar=False):
 
     """ Finds the optimised load-path for a FormDiagram.
 
@@ -89,10 +145,8 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
         Key of the independent set to use.
     tension : bool
         Allow tension edge force densities (experimental).
-
-#     Notes
-#     -----
-#     - SLSQP polish does not yet respect lower and upper bound constraints.
+    planar : bool
+        Only consider x-y.
 
     Returns
     -------
@@ -193,16 +247,17 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
     # Set-up
 
     lh2     = normrow(C.dot(xy))**2
-    EdinvEi = csr_matrix(dot(-pinv(E[:, dep]), E[:, ind]))
+    Edinv   = -csr_matrix(pinv(E[:, dep]))
+    Ei      = E[:, ind]
+    p       = vstack([px, py])
     q       = array(form.q())[:, newaxis]
     bounds  = [[qmin, qmax]] * k
-    args    = (q, ind, dep, EdinvEi, C, Ci, Cit, pz, z, free, lh2, sym, lb, ub, lb_ind, ub_ind, tension)
-
+    args    = (q, ind, dep, Edinv, Ei, C, Ci, Cit, p, pz, z, free, planar, lh2, sym, lb, ub, lb_ind, ub_ind, tension)
 
     # Horizontal check
 
     q[ind, 0] = rand(k) * qmax
-    q[dep] = EdinvEi.dot(q[ind])
+    q[dep] = -Edinv.dot(p - Ei.dot(q[ind]))
     Rx = Cit.dot(U * q.ravel()) - px.ravel()
     Ry = Cit.dot(V * q.ravel()) - py.ravel()
     R  = mean(Rx**2 + Ry**2)
@@ -264,12 +319,14 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
 
 def _zlq_from_qid(qid, args):
 
-    q, ind, dep, EdinvEi, C, Ci, Cit, pz, z, free, lh2, sym = args[:-5]
+    q, ind, dep, Edinv, Ei, C, Ci, Cit, p, pz, z, free, planar, lh2, sym = args[:-5]
+
     q[ind, 0] = qid
-    q[dep] = EdinvEi.dot(q[ind])
+    q[dep] = -Edinv.dot(p - Ei.dot(q[ind]))
     q[sym] *= 0
 
-    z[free] = spsolve(Cit.dot(diags(q[:, 0])).dot(Ci), pz)
+    if not planar:
+        z[free] = spsolve(Cit.dot(diags(q[:, 0])).dot(Ci), pz)
     l2 = lh2 + C.dot(z[:, newaxis])**2
 
     return z, l2, q
@@ -318,10 +375,12 @@ def _fint_(qid, *args):
 
 def qpos(qid, *args):
 
-    q, ind, dep, EdinvEi, C, Ci, Cit, pz, z, free, lh2, sym = args[:-5]
+    q, ind, dep, Edinv, Ei, C, Ci, Cit, p, pz, z, free, planar, lh2, sym = args[:-5]
+
     q[ind, 0] = qid
-    q[dep] = EdinvEi.dot(q[ind])
+    q[dep] = -Edinv.dot(p - Ei.dot(q[ind]))
     q[sym] *= 0
+
     return q.ravel() - 10**(-5)
 
 
@@ -330,6 +389,7 @@ def _slsqp(fn, qid0, bounds, printout, qpos, args):
     pout = 2 if printout else 0
     ieq = None if args[-1] else qpos
     opt = fmin_slsqp(fn, qid0, args=args, disp=pout, bounds=bounds, full_output=1, iter=300, f_ieqcons=ieq)
+
     return opt[1], opt[0]
 
 
@@ -393,14 +453,14 @@ def _worker(data):
 
     try:
 
-        i, form, save_figs, qmin, qmax, population, generations, simple = data
+        i, form, save_figs, qmin, qmax, population, generations, simple, tension = data
         fopt, qopt = optimise_single(form, qmin=qmin, qmax=qmax, population=population, generations=generations,
-                                     printout=0, tension=0)
+                                     printout=0, tension=tension)
 
         print('Trial: {0} - Optimum: {1:.1f}'.format(i, fopt))
 
         if save_figs:
-            plotter = plot_form(form, radius=0, fix_width=True, simple=simple)
+            plotter = plot_form(form, radius=0, fix_width=False, simple=simple)
             plotter.save('{0}trial_{1}-fopt_{2:.6f}.png'.format(save_figs, i, fopt))
             del plotter
 
@@ -413,7 +473,8 @@ def _worker(data):
         return (10**10, None)
 
 
-def optimise_multi(form, trials=10, save_figs='', qmin=0.001, qmax=5, population=300, generations=500, simple=False):
+def optimise_multi(form, trials=10, save_figs='', qmin=0.001, qmax=5, population=300, generations=500, simple=False,
+                   tension=False):
 
     """ Finds the optimised load-path for multiple randomised FormDiagrams.
 
@@ -435,6 +496,8 @@ def optimise_multi(form, trials=10, save_figs='', qmin=0.001, qmax=5, population
         Number of generations for the evolution solver.
     simple : bool
         Simple plotting for figures.
+    tension : bool
+        Allow tension edge force densities (experimental).
 
     Returns
     -------
@@ -447,7 +510,7 @@ def optimise_multi(form, trials=10, save_figs='', qmin=0.001, qmax=5, population
 
     """
 
-    data = [(i, randomise_form(form), save_figs, qmin, qmax, population, generations, simple)
+    data = [(i, randomise_form(form), save_figs, qmin, qmax, population, generations, simple, tension)
             for i in range(trials)]
     fopts, forms = zip(*Pool().map(_worker, data))
     best = argmin(fopts)
@@ -523,11 +586,39 @@ def plot_form(form, radius=0.1, fix_width=False, max_width=10, simple=True):
     return plotter
 
 
+def view_form(form):
+
+    """ View with the compas VtkViewer.
+
+    Parameters
+    ----------
+    form : obj
+        FormDiagram to view.
+
+    Returns
+    -------
+    None
+
+    """
+
+    data = {
+        'vertices': {i: form.vertex_coordinates(i) for i in sorted(form.vertices())},
+        'edges': [{'u': u, 'v': v} for u, v in form.edges() if not form.edge[u][v]['is_symmetry']],
+    }
+
+    viewer = VtkViewer(data=data)
+    viewer.start()
+
+
 # ==============================================================================
 # Main
 # ==============================================================================
 
 if __name__ == "__main__":
+
+    # ---------------------------------------------------------------------------------------------------------------
+    # Example 1
+    # ---------------------------------------------------------------------------------------------------------------
 
     # Load FormDiagram
 
@@ -541,13 +632,41 @@ if __name__ == "__main__":
 
     # Multiple runs
 
-    fopts, forms, best = optimise_multi(form, trials=100, save_figs='/home/al/Dropbox/figs/', qmax=5, population=200, generations=300)
+    fopts, forms, best = optimise_multi(form, trials=10, save_figs='', qmax=5, population=200, generations=300)
     form = forms[best]
 
     # Plot
 
-    # plot_form(form, radius=0.1, simple=False).show()
+    plot_form(form, radius=0.1, simple=False).show()
+
+    # View
+
+    view_form(form)
 
     # Save
 
-    # form.to_json(file)
+    form.to_json(file)
+
+
+    # ---------------------------------------------------------------------------------------------------------------
+    # Example 2 (testing)
+    # ---------------------------------------------------------------------------------------------------------------
+
+    # m = 8
+    # n = 2
+    # points = [[i, j, 0] for i in range(m) for j in range(n)]
+
+    # form = ground_form(points)
+    # form = randomise_form(form)
+
+    # pins = list(form.vertices_where(conditions={'x': 0}))
+    # load = list(form.vertices_where(conditions={'x': m - 1, 'y': n - 1}))
+    # form.set_vertices_attributes(pins, is_fixed=True)
+    # form.set_vertices_attributes(load, py=-1)
+
+    # fopt, qopt = optimise_single(form, qmin=-5, qmax=5, population=300, generations=500, printout=10, tension=True)
+
+    # fopts, forms, best = optimise_multi(form, trials=50, save_figs='/home/al/temp/', simple=True, tension=True)
+    # form = forms[best]
+
+    # plot_form(form, max_width=10, radius=0.05, simple=False).show()
