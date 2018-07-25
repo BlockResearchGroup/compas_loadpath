@@ -460,7 +460,7 @@ def _worker(data):
         print('Trial: {0} - Optimum: {1:.1f}'.format(i, fopt))
 
         if save_figs:
-            plotter = plot_form(form, radius=0, fix_width=False, simple=simple)
+            plotter = plot_form(form, radius=0, fix_width=True, simple=simple)
             plotter.save('{0}trial_{1}-fopt_{2:.6f}.png'.format(save_figs, i, fopt))
             del plotter
 
@@ -622,7 +622,7 @@ if __name__ == "__main__":
 
     # Load FormDiagram
 
-    file = '/home/al/compas_loadpath/data/_/arches_flat.json'
+    file = '/home/al/compas_loadpath/data/_/arches_curved.json'
     form = FormDiagram.from_json(file)
 
     # Single run
@@ -632,16 +632,16 @@ if __name__ == "__main__":
 
     # Multiple runs
 
-    fopts, forms, best = optimise_multi(form, trials=10, save_figs='', qmax=5, population=200, generations=300)
+    fopts, forms, best = optimise_multi(form, trials=5000, save_figs='/home/al/compas_ml/data/loadpath/', qmax=5, population=200, generations=300)
     form = forms[best]
 
     # Plot
 
-    plot_form(form, radius=0.1, simple=False).show()
+    # plot_form(form, radius=0.1, simple=False).show()
 
     # View
 
-    view_form(form)
+    # view_form(form)
 
     # Save
 
