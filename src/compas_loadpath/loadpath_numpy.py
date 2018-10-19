@@ -8,6 +8,7 @@ from numpy import argmin
 from numpy import array
 from numpy import dot
 from numpy import isnan
+from numpy import hstack
 from numpy import min
 from numpy import max
 from numpy import newaxis
@@ -19,7 +20,7 @@ from numpy.linalg import pinv
 from numpy.random import rand
 
 from scipy.linalg import svd
-# from scipy.optimize import fmin_slsqp
+from scipy.optimize import fmin_slsqp
 from scipy.sparse import csr_matrix
 from scipy.sparse import diags
 from scipy.sparse.linalg import spsolve
@@ -111,7 +112,7 @@ __all__ = [
 
 
 def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, population=300, generations=500,
-                    printout=10, tol=0.001, plot=False, frange=None, indset=None, tension=False, planar=False):
+                    printout=10, tol=0.001, plot=False, frange=[], indset=None, tension=False, planar=False):
 
     """ Finds the optimised load-path for a FormDiagram.
 
@@ -135,12 +136,12 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
         Frequency of print output to the terminal.
     tol : float
         Tolerance on horizontal force balance.
-#     plot : bool
-#         Plot progress of the evolution.
-#     frange : list
-#         Minimum and maximum function value to plot.
+    plot : bool
+        Plot progress of the evolution.
+    frange : list
+        Minimum and maximum function value to plot.
     indset : list
-#         Independent set to use.
+        Independent set to use.
     tension : bool
         Allow tension edge force densities (experimental).
     planar : bool
@@ -183,15 +184,15 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
     ub_ind = []
     lb = []
     ub = []
-#     for key, vertex in form.vertex.items():
-#         if vertex.get('lb', None):
-#             lb_ind.append(k_i[key])
-#             lb.append(vertex['lb'])
-#         if vertex.get('ub', None):
-#             ub_ind.append(k_i[key])
-#             ub.append(vertex['ub'])
-#     lb = array(lb)
-#     ub = array(ub)
+    # for key, vertex in form.vertex.items():
+    #     if vertex.get('lb', None):
+    #         lb_ind.append(k_i[key])
+    #         lb.append(vertex['lb'])
+    #     if vertex.get('ub', None):
+    #         ub_ind.append(k_i[key])
+    #         ub.append(vertex['ub'])
+    # lb = array(lb)
+    # ub = array(ub)
 
     # Co-ordinates and loads
 
@@ -283,12 +284,12 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
         # elif solver == 'ga':
         #     fopt, qopt = _diff_ga(_fint, bounds, population, generations, args)
 
-        # if polish == 'slsqp':
-        #     fopt_, qopt_ = _slsqp(_fint_, qopt, bounds, printout, qpos, args)
-        #     q1 = _zlq_from_qid(qopt_, args)[2]
-        #     if fopt_ < fopt:
-        #         if (min(q1) > -0.001 and not tension) or tension:
-        #             fopt, qopt, q = fopt_, qopt_, q1
+        if polish == 'slsqp':
+            fopt_, qopt_ = _slsqp(_fint_, qopt, bounds, printout, fieq, args)
+            q1 = _zlq_from_qid(qopt_, args)[2]
+            if fopt_ < fopt:
+                if (min(q1) > -0.001 and not tension) or tension:
+                    fopt, qopt = fopt_, qopt_
 
         z, _, q, q_ = _zlq_from_qid(qopt, args)
 
@@ -371,6 +372,7 @@ def _zlq_from_qid(qid, args):
 def _fint(qid, *args):
 
     q, ind, dep, Edinv, Ei, C, Ci, Cit, U, V, p, px, py, pz, tol, z, free, planar, lh, sym, lb, ub, lb_ind, ub_ind, tension = args
+
     z, l2, q, q_ = _zlq_from_qid(qid, args)
     f = dot(abs(q.transpose()), l2)
 
@@ -404,34 +406,41 @@ def _fint(qid, *args):
         return f
 
 
-# def _fint_(qid, *args):
+def _fint_(qid, *args):
 
-#     z, l2, q, q_ = _zlq_from_qid(qid, args)
-#     f = dot(abs(q.transpose()), l2)
+    z, l2, q, q_ = _zlq_from_qid(qid, args)
+    f = dot(abs(q.transpose()), l2)
 
-#     if isnan(f):
-#         return 10**10
-#     return f
+    if isnan(f):
+        return 10**10
 
-
-# def qpos(qid, *args):
-
-#     q, ind, dep, Edinv, Ei, C, Ci, Cit, p, pz, z, free, planar, lh, sym = args[:-5]
-
-#     q[ind, 0] = qid
-#     q[dep] = -Edinv.dot(p - Ei.dot(q[ind]))
-#     q[sym] *= 0
-
-#     return q.ravel() - 10**(-5)
+    return f
 
 
-# def _slsqp(fn, qid0, bounds, printout, qpos, args):
+def fieq(qid, *args):
 
-#     pout = 2 if printout else 0
-#     ieq = None if args[-1] else qpos
-#     opt = fmin_slsqp(fn, qid0, args=args, disp=pout, bounds=bounds, full_output=1, iter=300, f_ieqcons=ieq)
+    q, ind, dep, Edinv, Ei, C, Ci, Cit, U, V, p, px, py, pz, tol, z, free, planar, lh, sym, *_ = args
 
-#     return opt[1], opt[0]
+    q[ind, 0] = qid
+    q[dep] = -Edinv.dot(p - Ei.dot(q[ind]))
+    q_ = 1 * q
+    q[sym] *= 0
+
+    Rx = Cit.dot(U * q_.ravel()) - px.ravel()
+    Ry = Cit.dot(V * q_.ravel()) - py.ravel()
+    Rh = Rx**2 + Ry**2
+    Rm = max(sqrt(Rh))
+
+    return hstack([q.ravel() + 10**(-5), tol - Rm])
+
+
+def _slsqp(fn, qid0, bounds, printout, fieq, args):
+
+    pout = 2 if printout else 0
+    ieq  = None if args[-1] else fieq
+    opt  = fmin_slsqp(fn, qid0, args=args, disp=pout, bounds=bounds, full_output=1, iter=300, f_ieqcons=ieq)
+
+    return opt[1], opt[0]
 
 
 def _diff_evo(fn, bounds, population, generations, printout, plot, frange, args):
@@ -672,7 +681,7 @@ if __name__ == "__main__":
 
     # Load FormDiagram
 
-    file = '/home/al/compas_loadpath/data/arches_roller.json'
+    file = '/home/al/compas_loadpath/data/arches_curved.json'
     form = FormDiagram.from_json(file)
 
     # Single run
@@ -682,10 +691,10 @@ if __name__ == "__main__":
 
     # Multiple runs
 
-    fopts, forms, best = optimise_multi(form, trials=200, save_figs='/home/al/temp/lp/', qmax=5, population=300,
-                                        generations=500, tol=0.001)
+    fopts, forms, best = optimise_multi(form, trials=10, save_figs='/home/al/temp/lp/', qmax=5, population=200,
+                                        generations=200, tol=0.001)
     form = forms[best]
 
-    # plot_form(form, radius=0.05).show()
-    # view_form(form)
     # form.to_json(file)
+    # plot_form(form, radius=0.05).show()
+    view_form(form)

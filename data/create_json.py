@@ -84,4 +84,4 @@ rs.CurrentLayer('Default')
 
 # Save
 
-form.to_json('F:/compas_loadpath/data/arches_roller.json')
+form.to_json('F:/compas_loadpath/data/arches_curved.json')
