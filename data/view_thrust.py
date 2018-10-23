@@ -9,7 +9,7 @@ __license__   = 'MIT License'
 __email__     = 'liew@arch.ethz.ch'
 
 
-form = FormDiagram.from_json('F:/compas_loadpath/data/arches_roller.json')
+form = FormDiagram.from_json('F:/temp/output.json')
 print(form.attributes['loadpath'])
 
 artist = MeshArtist(form, layer='Thrust')

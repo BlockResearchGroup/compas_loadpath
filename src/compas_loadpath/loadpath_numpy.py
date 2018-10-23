@@ -37,7 +37,7 @@ from compas.numerical import normrow
 from compas.numerical import nonpivots
 from compas.plotters import MeshPlotter
 from compas.utilities import geometric_key
-from compas.viewers import VtkViewer
+# from compas.viewers import VtkViewer
 
 from multiprocessing import Pool
 from random import shuffle
@@ -380,14 +380,16 @@ def _fint(qid, *args):
         return 10**10
 
     else:
+
         if not tension:
             f += sum((q[q < 0] - 5)**4)
-            Rx = Cit.dot(U * q_.ravel()) - px.ravel()
-            Ry = Cit.dot(V * q_.ravel()) - py.ravel()
-            Rh = Rx**2 + Ry**2
-            Rm = max(sqrt(Rh))
-            if Rm > tol:
-                f += sum(Rh - tol + 5)**4
+
+        Rx = Cit.dot(U * q_.ravel()) - px.ravel()
+        Ry = Cit.dot(V * q_.ravel()) - py.ravel()
+        Rh = Rx**2 + Ry**2
+        Rm = max(sqrt(Rh))
+        if Rm > tol:
+            f += sum(Rh - tol + 5)**4
 
         # if lb_ind:
         #     z_lb    = z[lb_ind]
@@ -420,6 +422,7 @@ def _fint_(qid, *args):
 def fieq(qid, *args):
 
     q, ind, dep, Edinv, Ei, C, Ci, Cit, U, V, p, px, py, pz, tol, z, free, planar, lh, sym, *_ = args
+    tension = args[-1]
 
     q[ind, 0] = qid
     q[dep] = -Edinv.dot(p - Ei.dot(q[ind]))
@@ -431,14 +434,15 @@ def fieq(qid, *args):
     Rh = Rx**2 + Ry**2
     Rm = max(sqrt(Rh))
 
-    return hstack([q.ravel() + 10**(-5), tol - Rm])
+    if not tension:
+        return hstack([q.ravel() + 10**(-5), tol - Rm])
+    return [tol - Rm]
 
 
 def _slsqp(fn, qid0, bounds, printout, fieq, args):
 
     pout = 2 if printout else 0
-    ieq  = None if args[-1] else fieq
-    opt  = fmin_slsqp(fn, qid0, args=args, disp=pout, bounds=bounds, full_output=1, iter=300, f_ieqcons=ieq)
+    opt  = fmin_slsqp(fn, qid0, args=args, disp=pout, bounds=bounds, full_output=1, iter=300, f_ieqcons=fieq)
 
     return opt[1], opt[0]
 
@@ -681,7 +685,7 @@ if __name__ == "__main__":
 
     # Load FormDiagram
 
-    file = '/home/al/compas_loadpath/data/arches_curved.json'
+    file = '/home/al/compas_loadpath/data/arc_gridshell.json'
     form = FormDiagram.from_json(file)
 
     # Single run
@@ -691,10 +695,10 @@ if __name__ == "__main__":
 
     # Multiple runs
 
-    fopts, forms, best = optimise_multi(form, trials=10, save_figs='/home/al/temp/lp/', qmax=5, population=200,
-                                        generations=200, tol=0.001)
+    fopts, forms, best = optimise_multi(form, trials=100, save_figs='/home/al/temp/lp/', qmin=-5, qmax=5,
+                                        population=200, generations=200, tol=0.001, tension=True)
     form = forms[best]
 
-    # form.to_json(file)
-    # plot_form(form, radius=0.05).show()
-    view_form(form)
+    plot_form(form, radius=0.05).show()
+    # view_form(form)
+    form.to_json('/home/al/temp/output.json')

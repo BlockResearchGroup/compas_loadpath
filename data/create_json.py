@@ -18,7 +18,7 @@ __email__     = 'liew@arch.ethz.ch'
 # Form
 
 guids = rs.ObjectsByLayer('Lines') + rs.ObjectsByLayer('Symmetry')
-lines = [[rs.CurveStartPoint(i), rs.CurveEndPoint(i)] for i in guids]
+lines = [[rs.CurveStartPoint(i), rs.CurveEndPoint(i)] for i in guids if rs.IsCurve(i)]
 form = FormDiagram.from_lines(lines, delete_boundary_face=False)
 
 form.update_default_vertex_attributes({'is_roller': False})
@@ -60,10 +60,16 @@ for key in loads.vertices():
 # Symmetry
 
 for i in rs.ObjectsByLayer('Symmetry'):
+    
     if rs.IsCurve(i):
         u = gkey_key[geometric_key(rs.CurveStartPoint(i))]
         v = gkey_key[geometric_key(rs.CurveEndPoint(i))]
         form.set_edge_attribute((u, v), name='is_symmetry', value=True)
+        
+    elif rs.IsPoint(i):
+        u = gkey_key[geometric_key(rs.PointCoordinates(i))]
+        name = rs.ObjectName(i)
+        form.set_vertex_attribute(u, name='pz', value=float(name))
 
 # TextDots
 
@@ -84,4 +90,4 @@ rs.CurrentLayer('Default')
 
 # Save
 
-form.to_json('F:/compas_loadpath/data/arches_curved.json')
+form.to_json('F:/compas_loadpath/data/arc_gridshell.json')
