@@ -26,18 +26,15 @@ from scipy.sparse import diags
 from scipy.sparse.linalg import spsolve
 
 from compas_tna.diagrams import FormDiagram
-# from compas.geometry import add_vectors
-# from compas.geometry import scale_vector
-# from compas.geometry import vector_from_points
+
 from compas.numerical import connectivity_matrix
 from compas.numerical import devo_numpy
 from compas.numerical import equilibrium_matrix
-# from compas.numerical import ga
 from compas.numerical import normrow
 from compas.numerical import nonpivots
 from compas.plotters import MeshPlotter
 from compas.utilities import geometric_key
-# from compas.viewers import VtkViewer
+from compas.viewers import VtkViewer
 
 from multiprocessing import Pool
 from random import shuffle
@@ -52,63 +49,12 @@ __email__     = 'liew@arch.ethz.ch'
 
 
 __all__ = [
-#     'ground_form',
     'optimise_single',
     'optimise_multi',
     'plot_form',
     'view_form',
     'randomise_form',
 ]
-
-
-# def ground_form(points, overlap=10):
-
-#     """ Makes a ground structure FormDiagram from a set of points.
-
-#     Parameters
-#     ----------
-#     points : list
-#         Co-ordinates of each point to connect.
-#     overlap : int
-#         Check overlapping for this number of edge divisions.
-
-#     Returns
-#     -------
-#     obj
-#         Connected edges in a FormDiagram object.
-
-#     """
-
-#     form = FormDiagram()
-
-#     gkey_key = {}
-#     for x, y, z in points:
-#         key = form.add_vertex(x=x, y=y, z=z)
-#         gkey_key[geometric_key([x, y, z])] = key
-
-#     for i in form.vertices():
-#         for j in form.vertices():
-
-#             if (i != j) and (not form.has_edge(u=i, v=j, directed=False)):
-#                 sp = form.vertex_coordinates(i)
-#                 ep = form.vertex_coordinates(j)
-#                 vec = vector_from_points(sp, ep)
-#                 unique = True
-
-#                 for c in range(2, overlap):
-#                     for d in range(1, c):
-#                         sc = d / c
-#                         div = add_vectors(sp, scale_vector(vec, sc))
-#                         if gkey_key.get(geometric_key(div), None):
-#                             unique = False
-#                             break
-#                     if not unique:
-#                         break
-
-#                 if unique:
-#                     form.add_edge(u=i, v=j)
-
-#     return form
 
 
 def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, population=300, generations=500,
@@ -178,22 +124,6 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
     sym   = [uv_i[uv] for uv in form.edges_where({'is_symmetry': True})]
     free  = list(set(range(n)) - set(fixed) - set(rol))
 
-    # Constraints
-
-    lb_ind = []
-    ub_ind = []
-    lb = []
-    ub = []
-    # for key, vertex in form.vertex.items():
-    #     if vertex.get('lb', None):
-    #         lb_ind.append(k_i[key])
-    #         lb.append(vertex['lb'])
-    #     if vertex.get('ub', None):
-    #         ub_ind.append(k_i[key])
-    #         ub.append(vertex['ub'])
-    # lb = array(lb)
-    # ub = array(ub)
-
     # Co-ordinates and loads
 
     xyz = zeros((n, 3))
@@ -257,7 +187,7 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
     p      = vstack([px, py])
     q      = array([attr['q'] for u, v, attr in form.edges(True)])[:, newaxis]
     bounds = [[qmin, qmax]] * k
-    args   = (q, ind, dep, Edinv, Ei, C, Ci, Cit, U, V, p, px, py, pz, tol, z, free, planar, lh, sym, lb, ub, lb_ind, ub_ind, tension)
+    args   = (q, ind, dep, Edinv, Ei, C, Ci, Cit, U, V, p, px, py, pz, tol, z, free, planar, lh, sym, tension)
 
     # Horizontal checks
 
@@ -280,9 +210,6 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
 
         if solver == 'devo':
             fopt, qopt = _diff_evo(_fint, bounds, population, generations, printout, plot, frange, args)
-
-        # elif solver == 'ga':
-        #     fopt, qopt = _diff_ga(_fint, bounds, population, generations, args)
 
         if polish == 'slsqp':
             fopt_, qopt_ = _slsqp(_fint_, qopt, bounds, printout, fieq, args)
@@ -371,7 +298,7 @@ def _zlq_from_qid(qid, args):
 
 def _fint(qid, *args):
 
-    q, ind, dep, Edinv, Ei, C, Ci, Cit, U, V, p, px, py, pz, tol, z, free, planar, lh, sym, lb, ub, lb_ind, ub_ind, tension = args
+    q, ind, dep, Edinv, Ei, C, Ci, Cit, U, V, p, px, py, pz, tol, z, free, planar, lh, sym, tension = args
 
     z, l2, q, q_ = _zlq_from_qid(qid, args)
     f = dot(abs(q.transpose()), l2)
@@ -390,20 +317,6 @@ def _fint(qid, *args):
         Rm = max(sqrt(Rh))
         if Rm > tol:
             f += sum(Rh - tol + 5)**4
-
-        # if lb_ind:
-        #     z_lb    = z[lb_ind]
-        #     log_lb  = z_lb < lb
-        #     diff_lb = z_lb[log_lb] - lb[log_lb]
-        #     pen_lb  = sum(abs(diff_lb) + 5)**4
-        #     f += pen_lb
-
-        # if ub_ind:
-        #     z_ub    = z[ub_ind]
-        #     log_ub  = z_ub > ub
-        #     diff_ub = z_ub[log_ub] - ub[log_ub]
-        #     pen_ub  = sum(abs(diff_ub) + 5)**4
-        #     f += pen_ub
 
         return f
 
@@ -451,22 +364,6 @@ def _diff_evo(fn, bounds, population, generations, printout, plot, frange, args)
 
     return devo_numpy(fn=fn, bounds=bounds, population=population, generations=generations, printout=printout,
                       plot=plot, frange=frange, args=args)
-
-
-# def _diff_ga(fn, bounds, population, generations, args):
-
-#     k = len(bounds)
-#     nbins  = [10] * k
-#     elites = int(0.2 * population)
-
-#     ga_ = ga(fn, 'min', k, bounds, num_gen=generations, num_pop=population, num_elite=elites, num_bin_dig=nbins,
-#              mutation_probability=0.03, fargs=args, print_refresh=10)
-
-#     index = ga_.best_individual_index
-#     qopt  = ga_.current_pop['scaled'][index]
-#     fopt  = ga_.current_pop['fit_value'][index]
-
-#     return fopt, qopt
 
 
 def randomise_form(form):
@@ -663,12 +560,7 @@ def view_form(form):
 
     """
 
-    data = {
-        'vertices': {i: form.vertex_coordinates(i) for i in sorted(form.vertices())},
-        'edges':    [{'u': u, 'v': v} for u, v in form.edges() if not form.get_edge_attribute((u, v), 'is_symmetry', True)],
-    }
-
-    viewer = VtkViewer(data=data)
+    viewer = VtkViewer(datastructure=form)
     viewer.setup()
     viewer.start()
 
@@ -679,13 +571,9 @@ def view_form(form):
 
 if __name__ == "__main__":
 
-    # ---------------------------------------------------------------------------------------------------------------
-    # Example 1
-    # ---------------------------------------------------------------------------------------------------------------
-
     # Load FormDiagram
 
-    file = '/home/al/compas_loadpath/data/arc_gridshell.json'
+    file = '/home/al/compas_loadpath/data/orthogonal.json'
     form = FormDiagram.from_json(file)
 
     # Single run
@@ -695,8 +583,8 @@ if __name__ == "__main__":
 
     # Multiple runs
 
-    fopts, forms, best = optimise_multi(form, trials=100, save_figs='/home/al/temp/lp/', qmin=-5, qmax=5,
-                                        population=200, generations=200, tol=0.001, tension=True)
+    fopts, forms, best = optimise_multi(form, trials=50, save_figs='/home/al/temp/lp/', qmin=-5, qmax=5,
+                                        population=200, generations=200, tol=0.001)
     form = forms[best]
 
     plot_form(form, radius=0.05).show()

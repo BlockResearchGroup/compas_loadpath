@@ -46,16 +46,6 @@ for i in rs.ObjectsByLayer('Rollers'):
 loads = FormDiagram.from_lines(lines)
 for key in loads.vertices():
     form.vertex[key]['pz'] = loads.vertex_area(key=key)
-
-# Constraints
-
-#for i in rs.ObjectsByLayer('Lower'):
-#    gkey = geometric_key(rs.PointCoordinates(i))
-#    form.set_vertex_attributes(gkey_key[gkey], {'lb': float(rs.ObjectName(i))})
-    
-#for i in rs.ObjectsByLayer('Upper'):
-#    gkey = geometric_key(rs.PointCoordinates(i))
-#    form.set_vertex_attributes(gkey_key[gkey], {'ub': float(rs.ObjectName(i))})
     
 # Symmetry
 
@@ -90,4 +80,4 @@ rs.CurrentLayer('Default')
 
 # Save
 
-form.to_json('F:/compas_loadpath/data/arc_gridshell.json')
+form.to_json('F:/compas_loadpath/data/arches_curved.json')
