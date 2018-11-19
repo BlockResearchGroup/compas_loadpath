@@ -28,22 +28,15 @@ form.attributes['indset'] = []
 
 gkey_key = form.gkey_key()
 
-
 # Pins
 
 for i in rs.ObjectsByLayer('Pins'):
     gkey = geometric_key(rs.PointCoordinates(i))
     form.set_vertex_attribute(gkey_key[gkey], 'is_fixed', True)
     
-# Rollers
-
-for i in rs.ObjectsByLayer('Rollers'):
-    gkey = geometric_key(rs.PointCoordinates(i))
-    form.set_vertex_attribute(gkey_key[gkey], 'is_roller', True)
-
 # Loads
 
-loads = FormDiagram.from_lines(lines)
+loads = FormDiagram.from_lines(lines, delete_boundary_face=True)
 for key in loads.vertices():
     form.vertex[key]['pz'] = loads.vertex_area(key=key)
     
@@ -80,4 +73,4 @@ rs.CurrentLayer('Default')
 
 # Save
 
-form.to_json('F:/compas_loadpath/data/arches_curved.json')
+form.to_json('F:/compas_loadpath/data/gridshell.json')

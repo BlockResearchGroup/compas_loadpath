@@ -7,10 +7,10 @@ from numpy import abs
 from numpy import argmin
 from numpy import array
 from numpy import dot
-from numpy import isnan
 from numpy import hstack
-from numpy import min
+from numpy import isnan
 from numpy import max
+from numpy import min
 from numpy import newaxis
 from numpy import sqrt
 from numpy import sum
@@ -212,7 +212,7 @@ def optimise_single(form, solver='devo', polish='slsqp', qmin=1e-6, qmax=5, popu
             fopt, qopt = _diff_evo(_fint, bounds, population, generations, printout, plot, frange, args)
 
         if polish == 'slsqp':
-            fopt_, qopt_ = _slsqp(_fint_, qopt, bounds, printout, fieq, args)
+            fopt_, qopt_ = _slsqp(_fint_, qopt, bounds, printout, _fieq, args)
             q1 = _zlq_from_qid(qopt_, args)[2]
             if fopt_ < fopt:
                 if (min(q1) > -0.001 and not tension) or tension:
@@ -332,7 +332,7 @@ def _fint_(qid, *args):
     return f
 
 
-def fieq(qid, *args):
+def _fieq(qid, *args):
 
     q, ind, dep, Edinv, Ei, C, Ci, Cit, U, V, p, px, py, pz, tol, z, free, planar, lh, sym, *_ = args
     tension = args[-1]
@@ -387,6 +387,7 @@ def randomise_form(form):
     edges = [form.edge_coordinates(u, v) for u, v in form.edges()]
     edges = [[sp[:2] + [0], ep[:2] + [0]] for sp, ep in edges]
     shuffle(edges)
+
     form_ = FormDiagram.from_lines(edges, delete_boundary_face=False)
     form_.update_default_edge_attributes({'is_symmetry': False})
     sym = [geometric_key(form.edge_midpoint(u, v)[:2] + [0])for u, v in form.edges_where({'is_symmetry': True})]
@@ -573,7 +574,7 @@ if __name__ == "__main__":
 
     # Load FormDiagram
 
-    file = '/home/al/compas_loadpath/data/orthogonal.json'
+    file = '/home/al/compas_loadpath/data/gridshell.json'
     form = FormDiagram.from_json(file)
 
     # Single run
@@ -584,9 +585,8 @@ if __name__ == "__main__":
     # Multiple runs
 
     fopts, forms, best = optimise_multi(form, trials=50, save_figs='/home/al/temp/lp/', qmin=-5, qmax=5,
-                                        population=200, generations=200, tol=0.001)
+                                        population=200, generations=200, tol=0.01)
     form = forms[best]
 
-    plot_form(form, radius=0.05).show()
-    # view_form(form)
-    form.to_json('/home/al/temp/output.json')
+    # plot_form(form, radius=0.05).show()
+    view_form(form)
